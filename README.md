@@ -8,7 +8,11 @@ Choose subjects, choose how many recent popular videos to read, follow creators 
 
 This version runs on a Mac or Linux computer with Python 3.10 or newer. It is not a phone app, and the Windows starter is not ready yet. The computer must stay on to send the morning report.
 
-Reply to a YouTube report with **“kill that YouTube”** when it names one creator; that creator will stay out of future reports. If several creators are in the report, say **“kill YouTube The United Stand”** using the creator's name. Send **“add YouTube The United Stand”** to include a creator or **“add subject fashion”** to add a subject. Telegram confirms each change.
+## Which Telegram chat?
+
+Eochu's live reports come from [@cuntz2_bot](https://t.me/cuntz2_bot). Open that chat and send **“add YouTube The United Stand”** to include a creator or **“add subject fashion”** to add a subject. Reply to a **new** YouTube report with **“kill that YouTube”** when it names one creator; that creator will stay out of future reports. If several creators are in the report, or the report is older, send **“kill YouTube The United Stand”** using the creator's name. Telegram confirms each change.
+
+If you download this program for yourself, the starter helps you create **your own** Telegram bot. Eochu's chat does not control your copy.
 
 ## Give this to your own AI
 
