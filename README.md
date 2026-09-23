@@ -1,5 +1,11 @@
 # Leave YouTube — Lose the adverts, keep the info
 
+## Let an AI assistant set it up for you
+
+Give the assistant this GitHub page and say: **“Read [AGENTS.md](AGENTS.md). Set up my own copy on my Mac or Linux computer, connect my Telegram bot, send a real test report, and fix anything that fails.”**
+
+Your part is to provide your own Telegram bot and let the assistant use that computer. It handles the download and setup. You do not need a paid artificial intelligence account. Keep the computer on for morning reports.
+
 Choose subjects, choose how many recent popular videos to read, follow creators you like, and block creators you do not. Get a short Telegram report instead of watching for hours.
 
 ## Download the program
@@ -14,9 +20,7 @@ Eochu's live reports come from [@cuntz2_bot](https://t.me/cuntz2_bot). Open that
 
 If you download this program for yourself, the starter helps you create **your own** Telegram bot. Eochu's chat does not control your copy.
 
-## Give this to your own AI
-
-Send it this [project link](https://github.com/eochu-ollathair/leave-youtube) and say: **“Read AGENTS.md and get my own copy working. Help me choose videos, make a real preview, and connect my Telegram. Show me what actually worked.”** The [assistant instructions](AGENTS.md) give it the exact checks. It should use your own accounts and keep your private details off GitHub.
+## What the free version does
 
 The free report quotes useful speech from videos and needs no AI account. If you connect your own text AI, it can combine repeated points and disagreements, explain why a point matters, and use the sceptical angle you write. A suspected motive stays a possibility unless there is evidence. The maker's own AI is not available to other users.
 
