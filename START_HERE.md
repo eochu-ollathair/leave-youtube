@@ -13,6 +13,6 @@ Leave the Terminal window open and keep the computer on for morning messages. To
 
 You can reply to a morning message with **kill that YouTube** when it names one creator. Or send **kill YouTube** followed by a creator name, **add YouTube** followed by a creator name, or **add subject** followed by a subject name. Telegram confirms the change.
 
-**What the free report does:** it quotes useful things people actually said in videos. To combine several videos, explain why a claim matters or apply your own sceptical angle, you need to connect a text AI that you run or pay for yourself. No AI account is needed for the basic report.
+**What the free report does:** it gives one quote from each selected video whose speech it could read. Only those quoted videos are marked as sent. To combine several videos, explain why a claim matters or apply your own sceptical angle, you need to connect a text AI that you run or pay for yourself. No AI account is needed for the basic report.
 
 **If something goes wrong:** copy the exact error shown in Terminal when asking for help. Never post your Telegram bot code or private page link.

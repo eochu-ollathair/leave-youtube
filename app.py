@@ -476,16 +476,14 @@ def free_notes(video, speech):
 
 
 def free_digest(notes):
-    video, excerpts = notes[0]
-    excerpt = excerpts[0]
-    words = excerpt.split()
-    claim = " ".join(words[:27]) + ("…" if len(words) > 27 else "")
-    result = video["channel"] + ' said: “' + claim + '”'
-    consequence = re.search(r"\b(?:means that|which means|as a result|leads to|will|could|allows|prevents|makes it harder|makes it easier)\b[^.!?]*", excerpt, re.I)
-    if consequence:
-        words = consequence.group(0).split()
-        result += ' Why it matters: “' + " ".join(words[:18]) + ("…" if len(words) > 18 else "") + '”'
-    return result
+    # Every video listed as used below must appear in the report before it is retired.
+    lines = []
+    for video, excerpts in notes:
+        title = video["title"].strip()
+        if len(title) > 70:
+            title = title[:69].rsplit(" ", 1)[0].rstrip(" ,;:-") + "…"
+        lines.append("• " + video["channel"] + " — " + title + ': “' + excerpts[0] + '”')
+    return "\n".join(lines)
 
 
 def build_selection(config, progress=stamp):
@@ -553,10 +551,11 @@ def build_digest(config, selection, progress=stamp):
 
 def telegram_text(sections, timezone_name):
     day = datetime.now(ZoneInfo(timezone_name)).strftime("%d %B %Y")
-    lines = ["Leave YouTube · " + day]
+    parts = ["Leave YouTube · " + day]
     for section in sections:
-        lines.append(section["subject"] + ": " + section["text"])
-    return "\n".join(lines)
+        separator = ":\n" if "\n" in section["text"] else ": "
+        parts.append(section["subject"] + separator + section["text"])
+    return "\n\n".join(parts)
 
 
 def send_telegram(message):

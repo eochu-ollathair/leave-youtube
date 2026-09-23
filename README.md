@@ -28,7 +28,7 @@ If you download this program for yourself, the starter helps you create **your o
 
 ## What the free version does
 
-The free report quotes useful speech from videos and needs no AI account. If you connect your own text AI, it can combine repeated points and disagreements, explain why a point matters, and use the sceptical angle you write. A suspected motive stays a possibility unless there is evidence. The maker's own AI is not available to other users.
+The free report gives one labelled speech quote from **each selected video it could read**, then marks only those quoted videos as sent. It needs no AI account. If you connect your own text AI, it can combine repeated points and disagreements, explain why a point matters, and use the sceptical angle you write. A suspected motive stays a possibility unless there is evidence. The maker's own AI is not available to other users.
 
 ## For people who want to run it by hand
 
