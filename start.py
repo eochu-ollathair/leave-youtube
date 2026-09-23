@@ -114,6 +114,7 @@ def main():
     key = opening_key()
     environment = os.environ.copy()
     environment.update(TELEGRAM_BOT_TOKEN=saved["token"], TELEGRAM_CHAT_ID=saved["chat"],
+                       LEAVE_REPLIES="1",
                        MORNING_EMBEDDED_DAILY="1",
                        PATH=str(VENV / "bin") + os.pathsep + environment.get("PATH", ""))
     port = int(os.environ.get("LEAVE_YOUTUBE_START_PORT", "19133"))

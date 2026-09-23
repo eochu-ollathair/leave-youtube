@@ -11,6 +11,8 @@ This version runs on a **Mac or Linux computer**. Your phone receives the messag
 
 Leave the Terminal window open and keep the computer on for morning messages. To start again later, open Terminal in the same folder and type `python3 start.py` again. Your choices and Telegram details stay in the private `data` folder on that computer.
 
+You can reply to a morning message with **kill that YouTube** when it names one creator. Or send **kill YouTube** followed by a creator name, **add YouTube** followed by a creator name, or **add subject** followed by a subject name. Telegram confirms the change.
+
 **What the free report does:** it quotes useful things people actually said in videos. To combine several videos, explain why a claim matters or apply your own sceptical angle, you need to connect a text AI that you run or pay for yourself. No AI account is needed for the basic report.
 
 **If something goes wrong:** copy the exact error shown in Terminal when asking for help. Never post your Telegram bot code or private page link.

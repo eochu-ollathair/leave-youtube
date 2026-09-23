@@ -29,6 +29,7 @@ CONFIG_FILE = DATA_DIR / "settings.json"
 STATE_FILE = DATA_DIR / "last_run.json"
 DELIVERY_FILE = DATA_DIR / "last_delivery.json"
 SENT_FILE = DATA_DIR / "sent_videos.json"
+SENT_MESSAGES_FILE = DATA_DIR / "sent_messages.json"
 LOCK_FILE = DATA_DIR / "run.lock"
 SOURCE_FILE = ROOT / "dist" / "leave-youtube-source.zip"
 ACCESS_LABEL = "Leave YouTube access key: "
@@ -575,13 +576,37 @@ def send_telegram(message):
             cut = 3900
         pieces.append(message[:cut])
         message = message[cut:].lstrip()
+    message_ids = []
     for piece in pieces:
         response = requests.post("https://api.telegram.org/bot" + token + "/sendMessage",
                                  json={"chat_id": OWNER_CHAT, "text": piece,
                                        "disable_web_page_preview": True}, timeout=25)
         response.raise_for_status()
-        if not response.json().get("ok"):
+        answer = response.json()
+        if not answer.get("ok"):
             raise RuntimeError("Telegram refused the message")
+        message_ids.append((answer.get("result") or {}).get("message_id"))
+    return message_ids
+
+
+def send_sections(sections, timezone_name):
+    mapping = json.loads(SENT_MESSAGES_FILE.read_text(encoding="utf-8")) if SENT_MESSAGES_FILE.exists() else {}
+    delivered = []
+    for section in sections:
+        if not section.get("videos"):
+            continue
+        ids = send_telegram(telegram_text([section], timezone_name))
+        creators = list({(video.get("channel_id") or video.get("channel", "")):
+                         {"name": video.get("channel", ""), "channel_id": video.get("channel_id", "")}
+                         for video in section["videos"]}.values())
+        for message_id in ids:
+            mapping[str(message_id)] = {"kind": "youtube", "subject": section["subject"],
+                                        "creators": creators}
+        atomic_json(SENT_MESSAGES_FILE, dict(list(mapping.items())[-200:]))
+        used = {video["id"] for video in section["videos"] if video.get("id")}
+        atomic_json(SENT_FILE, {"ids": sorted(sent_video_ids() | used)})
+        delivered.extend(ids)
+    return delivered
 
 
 def record_delivery(config, automatic=False):
@@ -633,7 +658,7 @@ def run(kind, automatic=False):
                 if not any(section["videos"] for section in sections):
                     raise RuntimeError("No videos had readable speech; Telegram was not sent")
                 stamp("Sending the report to Telegram")
-                send_telegram(result["message"])
+                result["telegram_message_ids"] = send_sections(sections, config["timezone"])
                 retire_sent_videos(result)
                 result["sent"] = True
                 record_delivery(config, automatic)
@@ -656,7 +681,7 @@ def start_job(kind):
                 if not any(section["videos"] for section in result["sections"]):
                     raise RuntimeError("No videos had readable speech; Telegram was not sent")
                 stamp("Sending the preview to Telegram", kind="send")
-                send_telegram(result["message"])
+                result["telegram_message_ids"] = send_sections(result["sections"], result["settings"]["timezone"])
                 retire_sent_videos(result)
                 result["sent"] = True
                 result["kind"] = "send"
@@ -691,7 +716,7 @@ def send_recent_preview():
                 return False
             stamp("Sending the preview to Telegram", running=True, kind="send", error=None)
             try:
-                send_telegram(saved["message"])
+                saved["telegram_message_ids"] = send_sections(saved["sections"], config["timezone"])
                 retire_sent_videos(saved)
                 record_delivery(config)
                 saved["sent"] = True
@@ -777,7 +802,10 @@ def save_settings():
         clean = validate_settings(request.get_json(force=True))
     except (ValueError, AttributeError, TypeError) as exc:
         return jsonify({"error": str(exc)}), 400
-    atomic_json(CONFIG_FILE, clean)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    with (DATA_DIR / "settings.lock").open("a+") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        atomic_json(CONFIG_FILE, clean)
     return jsonify({"settings": clean})
 
 
@@ -826,6 +854,8 @@ def main():
     if args.mode == "serve":
         if os.environ.get("MORNING_EMBEDDED_DAILY") == "1":
             threading.Thread(target=daily_loop, daemon=True).start()
+        from telegram_replies import start_listener
+        start_listener("youtube", ROOT)
         app.run(host=args.host, port=args.port, threaded=True)
         return
     if args.mode == "daily":
