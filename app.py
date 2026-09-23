@@ -31,7 +31,7 @@ LOCK_FILE = DATA_DIR / "run.lock"
 SOURCE_FILE = ROOT / "dist" / "leave-youtube-source.zip"
 ACCESS_LABEL = "Leave YouTube access key: "
 BASE = os.environ.get("LEAVE_YOUTUBE_BASE", "").rstrip("/")
-LOCAL_AI = os.environ.get("MORNING_MODEL_URL", "http://127.0.0.1:11434/v1/chat/completions")
+LOCAL_AI = os.environ.get("MORNING_MODEL_URL", "")
 MODEL = os.environ.get("MORNING_MODEL", "")
 OWNER_CHAT = os.environ.get("TELEGRAM_CHAT_ID", "")
 app = Flask(__name__)
@@ -280,17 +280,26 @@ def transcript(video_id):
 
 
 def ask_model(system, user, max_tokens=1400, timeout=180):
-    if not MODEL:
-        raise RuntimeError("Set MORNING_MODEL to the name of your text model")
+    if not LOCAL_AI or not MODEL:
+        raise RuntimeError("Set both MORNING_MODEL_URL and MORNING_MODEL to use a text model")
     headers = {}
-    if os.environ.get("MORNING_MODEL_KEY"):
-        headers["Authorization"] = "Bearer " + os.environ["MORNING_MODEL_KEY"]
+    key = os.environ.get("MORNING_MODEL_KEY", "")
+    if LOCAL_AI.startswith("https://api.openai.com/"):
+        key = key or os.environ.get("OPENAI_API_KEY", "")
+        if not key:
+            raise RuntimeError("Set your own OPENAI_API_KEY to make reports")
+    if key:
+        headers["Authorization"] = "Bearer " + key
     for limit in (max_tokens, max_tokens * 2):
-        response = requests.post(LOCAL_AI, json={
+        payload = {
             "model": MODEL, "messages": [{"role": "system", "content": system},
                                           {"role": "user", "content": user}],
             "temperature": 0.1, "max_tokens": limit,
-        }, headers=headers, timeout=timeout)
+        }
+        if os.environ.get("MORNING_DISABLE_REASONING") == "1":
+            payload["reasoning_effort"] = "none"
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
+        response = requests.post(LOCAL_AI, json=payload, headers=headers, timeout=timeout)
         response.raise_for_status()
         answer = response.json()["choices"][0]
         result = (answer["message"].get("content") or "").strip()
@@ -317,12 +326,15 @@ def video_notes(video, speech):
     system = ("You make evidence notes from a YouTube transcript. Report only what the speaker actually says. "
               "Prefer exact products, events, numbers, reasons, and opinions. Mark a speaker's prediction as a prediction. "
               "Never invent facts. Avoid broad statements such as 'things are changing'. Output 4 to 7 short bullets. "
-              "If the speech is unrelated to the title or too thin, say so. Do not add an introduction.")
+              "If the speech is unrelated to the title or too thin, output exactly UNUSABLE. "
+              "Use plain text, no Markdown. Do not add an introduction.")
     parts = []
     for i, chunk in enumerate(chunks, 1):
         parts.append(ask_model(system, "VIDEO: " + video["title"] + "\nCREATOR: " + video["channel"] +
                                "\nPART: " + str(i) + " of " + str(len(chunks)) +
                                "\nTRANSCRIPT:\n" + chunk, max_tokens=1400))
+    if any(part.strip() == "UNUSABLE" for part in parts):
+        return "UNUSABLE"
     if len(parts) == 1:
         return parts[0]
     return ask_model(system, "VIDEO: " + video["title"] + "\nCombine these notes from every part "
@@ -334,10 +346,56 @@ def subject_digest(subject, notes):
     system = ("Write a short morning briefing about what these videos SAY. Use 2 to 4 bullets, each with a concrete "
               "product, event, claim, figure, or reason. Combine repeated points. State disagreements or differing opinions "
               "when present. Do not present an unverified video claim as an established fact. No vague filler, hype, "
-              "intro, or stock conclusion. Plain English. Stay under 130 words. Do not quote at length.")
+              "intro, or stock conclusion. Plain English. Stay under 130 words. Do not quote at length. "
+              "Name the creator for each claim. Do not add any product, person, event, or number absent from the notes. "
+              "Use plain text, no Markdown.")
     source = "\n\n".join("VIDEO " + str(i + 1) + ": " + video["title"] + " — " + video["channel"] +
                            "\n" + note for i, (video, note) in enumerate(notes))
     return ask_model(system, "SUBJECT: " + subject["name"] + "\n" + source, max_tokens=1000)
+
+
+def free_notes(video, speech):
+    """Select short, verbatim claims from speech without an AI account."""
+    clean = re.sub(r"\[[^]]{1,30}\]", " ", speech)
+    clean = re.sub(r"\s+", " ", clean).strip()
+    sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9])", clean)
+    title_words = {word.casefold() for word in re.findall(r"[A-Za-z]{4,}", video["title"])}
+    common = {"this", "that", "with", "from", "they", "have", "what", "your", "about", "video", "made", "watch"}
+    title_words -= common
+    scored = []
+    for sentence in sentences:
+        words = re.findall(r"[A-Za-z0-9]+", sentence)
+        if not 9 <= len(words) <= 42 or sentence.endswith("?"):
+            continue
+        lower = sentence.casefold()
+        if any(filler in lower for filler in ("subscribe", "sponsor", "link in the description", "welcome back", "like this video", "thanks for watching")):
+            continue
+        overlap = sum(word in lower for word in title_words)
+        number = bool(re.search(r"\d", sentence))
+        reason = any(word in lower for word in ("because", "means that", "compared", "instead", "however", "but ", "according to", "percent", "%"))
+        if not (overlap or number or reason):
+            continue
+        score = overlap * 3 + number * 3 + reason * 2 + min(len(words), 28) / 14
+        scored.append((score, sentence.strip()))
+    if not scored:
+        return "UNUSABLE"
+    selected = []
+    for _, sentence in sorted(scored, reverse=True):
+        tokens = set(re.findall(r"[a-z]{4,}", sentence.casefold()))
+        if any(len(tokens & old) / max(1, len(tokens | old)) > .45 for old in (item[1] for item in selected)):
+            continue
+        selected.append((sentence, tokens))
+        if len(selected) == 2:
+            break
+    return [item[0] for item in selected]
+
+
+def free_digest(notes):
+    lines = []
+    for video, excerpts in notes:
+        for excerpt in excerpts:
+            lines.append(video["channel"] + ' said: “' + excerpt + '”')
+    return "\n".join(lines)
 
 
 def build_selection(config, progress=stamp):
@@ -350,6 +408,7 @@ def build_selection(config, progress=stamp):
 
 
 def build_digest(config, selection, progress=stamp):
+    model_mode = bool(LOCAL_AI and MODEL)
     sections = []
     for group in selection:
         videos = group["videos"]
@@ -363,7 +422,10 @@ def build_digest(config, selection, progress=stamp):
             progress("Reading speech: " + video["title"][:55])
             try:
                 speech = transcript(video["id"])
-                note = video_notes(video, speech)
+                note = video_notes(video, speech) if model_mode else free_notes(video, speech)
+                if note == "UNUSABLE":
+                    video["speech_error"] = "Speech did not contain useful points about this subject"
+                    continue
                 notes.append((video, note))
             except Exception as exc:
                 video["speech_error"] = str(exc)[:160]
@@ -375,7 +437,7 @@ def build_digest(config, selection, progress=stamp):
             content = "No videos were available to read."
         else:
             progress("Combining what was said: " + group["subject"])
-            content = subject_digest({"name": group["subject"]}, notes)
+            content = subject_digest({"name": group["subject"]}, notes) if model_mode else free_digest(notes)
         sections.append({"subject": group["subject"], "text": content,
                          "videos": [video for video, _ in notes], "requested": group["requested"]})
     return sections
