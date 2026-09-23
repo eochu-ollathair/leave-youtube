@@ -192,11 +192,12 @@ def command_output(args, timeout=50):
 
 
 def flat_search(query, how_many=20):
+    recent_query = query + " after:" + (datetime.now(timezone.utc) - timedelta(days=8)).date().isoformat()
     raw = command_output([
         "yt-dlp", "--no-update", "--no-warnings", "--socket-timeout", "12",
         "--playlist-end", str(how_many), "--flat-playlist", "--print",
         "%(id)s\t%(title)s\t%(channel)s\t%(channel_id)s\t%(view_count)s",
-        "ytsearchdate" + str(how_many) + ":" + query,
+        "ytsearch" + str(how_many) + ":" + recent_query,
     ], timeout=55)
     videos = []
     for line in raw.splitlines():
