@@ -1,0 +1,15 @@
+data/
+dist/
+settings.json
+last_run.json
+last_delivery.json
+run.lock
+access-key
+__pycache__/
+*.py[cod]
+.venv/
+.env
+*.log
+*.sqlite3
+.pytest_cache/
+PROJECT_NOTES.md

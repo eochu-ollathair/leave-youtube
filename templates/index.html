@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#11151b">
+  <title>Leave YouTube — Lose the adverts, not the info</title>
+  <style>
+    :root{color-scheme:dark;--bg:#11151b;--panel:#1b222b;--panel2:#232d38;--ink:#f0f3f1;--muted:#b4c2c5;--line:#40505a;--accent:#a7efb6;--warn:#f5c57b}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top right,#23342e 0,#11151b 50%);color:var(--ink);font:16px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}main{max-width:1060px;margin:auto;padding:26px 18px 80px}
+    h1,h2,h3,p{margin-top:0}h1{font-size:clamp(34px,7vw,56px);line-height:1.03;letter-spacing:-.045em;margin-bottom:12px}h2{font-size:23px;margin-bottom:10px}h3{font-size:18px;margin:0}.eyebrow{color:var(--accent);font-size:12px;text-transform:uppercase;letter-spacing:.18em;font-weight:800;margin-bottom:12px}.lead{color:var(--muted);font-size:18px;max-width:680px}.layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(270px,.8fr);gap:16px;align-items:start}.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:22px;margin:16px 0;box-shadow:0 16px 40px #0002}.side{position:sticky;top:16px}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.between{justify-content:space-between}.small{font-size:13px;color:var(--muted)}label{display:block;font-weight:700;color:var(--ink);font-size:13px;margin-bottom:7px}input{width:100%;padding:11px 12px;border:1px solid #5a6a73;background:#111922;border-radius:10px;color:var(--ink);font:inherit}input:focus{outline:2px solid var(--accent);outline-offset:1px}.subject{padding:14px;background:var(--panel2);border:1px solid var(--line);border-radius:13px;margin:10px 0}.subject-fields{display:grid;grid-template-columns:1fr 1.3fr 90px auto;gap:10px;align-items:end}.button{border:1px solid var(--line);border-radius:10px;background:#2d3b45;color:var(--ink);font:700 14px/1.1 system-ui,sans-serif;padding:12px 14px;cursor:pointer;min-height:44px}.button:hover{border-color:var(--accent)}.button.primary{background:var(--accent);border-color:var(--accent);color:#102017}.button.warn{background:transparent;color:var(--warn);border-color:#806949}.button:disabled{opacity:.45;cursor:wait}.button.icon{font-size:20px;padding:8px 12px}.list{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.pill{display:inline-flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);padding:8px 10px;border-radius:999px;font-size:14px}.pill button{color:var(--warn);background:none;border:0;font-size:18px;cursor:pointer;line-height:1}.switch{display:flex;align-items:center;gap:10px;font-weight:700}.switch input{width:20px;height:20px;accent-color:var(--accent)}.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}.video{padding:12px 0;border-top:1px solid var(--line)}.video a{color:var(--ink);font-weight:700;text-decoration:none}.video a:hover{text-decoration:underline}.video .meta{color:var(--muted);font-size:13px;margin:4px 0 8px}.video button{padding:8px 10px;min-height:34px}.digest{white-space:pre-wrap;font-size:15px;line-height:1.55}.notice{padding:13px;border-radius:10px;background:#223b30;color:#d6f5dc}.error{background:#49302b;color:#ffdbd4}.actions{display:flex;flex-wrap:wrap;gap:8px}.topline{display:flex;justify-content:space-between;gap:16px;align-items:start}.badge{border:1px solid var(--line);border-radius:999px;padding:7px 12px;color:var(--muted);font-size:12px;white-space:nowrap}.blank{color:var(--muted);padding:20px 0}.divider{border:0;border-top:1px solid var(--line);margin:18px 0}.footer{font-size:12px;color:var(--muted);margin-top:18px}
+    @media(max-width:800px){.layout{display:block}.side{position:static}.subject-fields{grid-template-columns:1fr 80px auto}.subject-fields .search-field{grid-column:1/-1;grid-row:2}.subject-fields .count-field{grid-column:2;grid-row:1}.subject-fields .remove-field{grid-column:3;grid-row:1}.card{padding:17px}.topline{display:block}.badge{display:inline-block;margin-bottom:14px}}
+  </style>
+</head>
+<body>
+<main>
+  <div class="topline"><div><div class="eyebrow">Leave YouTube</div><h1>Lose the adverts.<br>Keep the info.</h1><p class="lead">Pick the subjects. Set how many videos to read. Block creators you are tired of. Get the actual points in Telegram each morning.</p></div><div class="badge">Private settings</div></div>
+  <div class="layout">
+    <div>
+      <section class="card">
+        <div class="section-head"><h2>Subjects</h2><span class="small">1–10 videos each</span></div>
+        <p class="small">The search decides which videos are considered. Each morning, the most watched recent matches are checked.</p>
+        <div id="subjects"></div>
+        <button class="button" id="addSubject" type="button">+ Add a subject</button>
+      </section>
+      <section class="card">
+        <h2>Creators to ignore</h2>
+        <p class="small">Block a creator below, or use the Block button beside a chosen video. Their videos will be left out of future reports.</p>
+        <div class="row"><input id="blockedName" style="flex:1;min-width:180px" placeholder="Creator name"><button class="button" id="addBlock" type="button">Block creator</button></div>
+        <div class="list" id="blockedList"></div>
+      </section>
+      <section class="card">
+        <div class="section-head"><h2>Chosen videos</h2><span class="small" id="lastChecked"></span></div>
+        <div id="selection" class="blank">Check the videos to see exactly what would be used.</div>
+      </section>
+      <section class="card">
+        <h2>The report</h2>
+        <div id="report" class="blank">Make a preview to read the condensed report here before the next morning send.</div>
+      </section>
+    </div>
+    <div class="side">
+      <section class="card">
+        <h2>Delivery</h2>
+        <label class="switch"><input type="checkbox" id="enabled">Send to Telegram every morning</label>
+        <hr class="divider">
+        <label for="sendTime">Morning time</label>
+        <input id="sendTime" type="time" value="08:00">
+        <label for="timeZone" style="margin-top:14px">Your time zone</label>
+        <input id="timeZone" value="Europe/Dublin" placeholder="Europe/Dublin">
+        <p class="small" style="margin-top:10px">The report says what the videos claimed. It does not treat every video claim as proven fact.</p>
+        <div class="actions"><button class="button primary" id="save" type="button">Save choices</button></div>
+        <hr class="divider">
+        <div class="actions"><button class="button" id="select" type="button">Check chosen videos</button><button class="button" id="preview" type="button">Make report preview</button><button class="button warn" id="send" type="button">Send to Telegram now</button></div>
+        <p id="activity" class="small" style="margin-top:14px">Ready.</p>
+      </section>
+    </div>
+  </div>
+  <p class="footer">Videos are drawn from the last seven days. Views and dates are checked when the report runs. A subject with no readable speech is marked as such.</p>
+</main>
+<script>
+const BASE={{ base|tojson }};
+let settings=null, last=null, pending=false;
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=n=>Number(n||0).toLocaleString();
+const notice=(message,error=false)=>{$('#activity').textContent=message;$('#activity').className=error?'notice error':'small'};
+function renderSubjects(){
+  $('#subjects').innerHTML=settings.subjects.map((s,i)=>`<div class="subject"><div class="subject-fields"><div><label>Subject</label><input data-sub="${i}" data-field="name" value="${esc(s.name)}" placeholder="e.g. Phones"></div><div class="search-field"><label>YouTube search</label><input data-sub="${i}" data-field="query" value="${esc(s.query)}" placeholder="e.g. iPhone review"></div><div class="count-field"><label>Videos</label><input data-sub="${i}" data-field="count" type="number" min="1" max="10" value="${s.count}"></div><div class="remove-field"><label>&nbsp;</label><button class="button icon" data-remove="${i}" title="Remove subject">×</button></div></div></div>`).join('');
+  document.querySelectorAll('[data-sub]').forEach(el=>el.addEventListener('input',()=>{let s=settings.subjects[Number(el.dataset.sub)];s[el.dataset.field]=el.dataset.field==='count'?Number(el.value):el.value}));
+  document.querySelectorAll('[data-remove]').forEach(el=>el.addEventListener('click',()=>{settings.subjects.splice(Number(el.dataset.remove),1);renderSubjects()}));
+}
+function renderBlocked(){
+  $('#blockedList').innerHTML=settings.blocked.length?settings.blocked.map((b,i)=>`<span class="pill">${esc(b.name||b.channel_id)} <button data-unblock="${i}" title="Allow this creator again">×</button></span>`).join(''):'<span class="small">No creators blocked.</span>';
+  document.querySelectorAll('[data-unblock]').forEach(el=>el.addEventListener('click',()=>{settings.blocked.splice(Number(el.dataset.unblock),1);renderBlocked()}));
+}
+function renderLast(){
+  const groups=last?.selection||[];
+  $('#lastChecked').textContent=last?.at?new Date(last.at).toLocaleString():'';
+  $('#selection').className=groups.length?'':'blank';
+  $('#selection').innerHTML=groups.length?groups.map(g=>`<div><div class="section-head"><h3>${esc(g.subject)}</h3><span class="small">${g.videos.length} of ${g.requested} chosen</span></div>${g.videos.length?g.videos.map(v=>`<div class="video"><a href="${esc(v.url)}" target="_blank" rel="noopener">${esc(v.title)}</a><div class="meta">${esc(v.channel)} · ${fmt(v.views)} views · ${esc(v.published)}</div><button class="button" data-block-id="${esc(v.channel_id)}" data-block-name="${esc(v.channel)}">Block this creator</button></div>`).join(''):'<p class="small">No matching recent videos passed the checks.</p>'}</div>`).join(''):'Check the videos to see exactly what would be used.';
+  document.querySelectorAll('[data-block-name]').forEach(el=>el.addEventListener('click',async()=>{const name=el.dataset.blockName,id=el.dataset.blockId;if(!settings.blocked.some(b=>b.channel_id===id&&id||b.name.toLowerCase()===name.toLowerCase()))settings.blocked.push({name,channel_id:id});renderBlocked();await saveSettings();notice(name+' blocked. Check videos again to replace their videos.')}));
+  $('#report').className=last?.message?'digest':'blank';
+  $('#report').textContent=last?.message||'Make a preview to read the condensed report here before the next morning send.';
+}
+async function load(){const r=await fetch(BASE+'/api/status',{credentials:'same-origin'});if(!r.ok)throw Error('Could not open settings');const d=await r.json();if(!settings){settings=d.settings;$('#enabled').checked=settings.enabled;$('#sendTime').value=settings.time;$('#timeZone').value=settings.timezone;renderSubjects();renderBlocked()}last=d.last;renderLast();if(d.job.running){pending=true;notice(d.job.stage+'…');setTimeout(load,2500)}else if(pending){pending=false;notice(d.job.error?d.job.error:(d.job.kind==='send'?'Sent to Telegram.':'Finished.'),!!d.job.error)}else if(d.job.error){notice(d.job.error,true)}document.querySelectorAll('#select,#preview,#send').forEach(b=>b.disabled=d.job.running)}
+async function saveSettings(){settings.enabled=$('#enabled').checked;settings.time=$('#sendTime').value;settings.timezone=$('#timeZone').value.trim();const r=await fetch(BASE+'/api/settings',{method:'POST',headers:{'Content-Type':'application/json','X-Morning-Action':'yes'},credentials:'same-origin',body:JSON.stringify(settings)});const d=await r.json();if(!r.ok)throw Error(d.error||'Could not save');settings=d.settings;return d}
+async function run(kind){try{await saveSettings();notice(kind==='selection'?'Finding videos…':kind==='send'?'Making and sending report…':'Making report preview…');const r=await fetch(BASE+'/api/run/'+kind,{method:'POST',headers:{'X-Morning-Action':'yes'},credentials:'same-origin'});const d=await r.json();if(!r.ok)throw Error(d.error||'Could not start');pending=true;setTimeout(load,1000)}catch(e){notice(e.message,true)}}
+$('#addSubject').onclick=()=>{if(settings.subjects.length>=12)return notice('Use up to 12 subjects.',true);settings.subjects.push({name:'',query:'',count:3});renderSubjects();document.querySelector('.subject:last-child input').focus()};
+$('#addBlock').onclick=()=>{const name=$('#blockedName').value.trim();if(!name)return;settings.blocked.push({name,channel_id:''});$('#blockedName').value='';renderBlocked()};
+$('#blockedName').addEventListener('keydown',e=>{if(e.key==='Enter'){$('#addBlock').click()}});
+$('#save').onclick=async()=>{try{await saveSettings();notice('Choices saved.')}catch(e){notice(e.message,true)}};
+$('#select').onclick=()=>run('selection');$('#preview').onclick=()=>run('preview');$('#send').onclick=()=>run('send');
+load().catch(e=>notice(e.message,true));
+</script>
+</body>
+</html>
