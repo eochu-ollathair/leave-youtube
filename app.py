@@ -28,6 +28,7 @@ DATA_DIR = Path(os.environ.get("MORNING_DATA_DIR", str(ROOT / "data")))
 CONFIG_FILE = DATA_DIR / "settings.json"
 STATE_FILE = DATA_DIR / "last_run.json"
 DELIVERY_FILE = DATA_DIR / "last_delivery.json"
+SENT_FILE = DATA_DIR / "sent_videos.json"
 LOCK_FILE = DATA_DIR / "run.lock"
 SOURCE_FILE = ROOT / "dist" / "leave-youtube-source.zip"
 ACCESS_LABEL = "Leave YouTube access key: "
@@ -254,10 +255,11 @@ def matches_creator(item, creator):
     return clean(creator["name"]) == clean(item.get("channel", ""))
 
 
-def choose_videos(subject, blocked_creators, extra=0):
+def choose_videos(subject, blocked_creators, extra=0, excluded_ids=None):
+    excluded_ids = excluded_ids or set()
     wanted = subject["count"]
     found = flat_search(subject["query"], min(30, max(18, wanted * 5)))
-    found = [v for v in found if not blocked(v, blocked_creators)
+    found = [v for v in found if v["id"] not in excluded_ids and not blocked(v, blocked_creators)
              and matches_creator(v, subject.get("creator"))]
     # Inspect popular results and several new ones, then rank with a mild age adjustment.
     popular = sorted(found, key=lambda v: v["views"], reverse=True)[:max(10, wanted * 3)]
@@ -272,7 +274,7 @@ def choose_videos(subject, blocked_creators, extra=0):
             except Exception:
                 continue
             age = (datetime.now(timezone.utc).date() - datetime.fromisoformat(video["published"]).date()).days
-            if (0 <= age <= 7 and 60 <= video["duration"] <= 10800
+            if (video["id"] not in excluded_ids and 0 <= age <= 7 and 60 <= video["duration"] <= 10800
                     and not blocked(video, blocked_creators)
                     and matches_creator(video, subject.get("creator"))):
                 video["score"] = round(video["views"] / ((age + 1) ** 0.55))
@@ -487,13 +489,15 @@ def free_digest(notes):
 
 def build_selection(config, progress=stamp):
     selection = []
+    excluded_ids = sent_video_ids()
     subjects = list(config["subjects"])
     for creator in config.get("followed", []):
         subjects.append({"name": creator["name"], "query": creator["name"],
                          "count": creator["count"], "creator": creator})
     for subject in subjects:
         progress("Finding recent, highly watched videos: " + subject["name"])
-        candidates = choose_videos(subject, config["blocked"], extra=5)
+        candidates = choose_videos(subject, config["blocked"], extra=5, excluded_ids=excluded_ids)
+        excluded_ids.update(video["id"] for video in candidates)
         selection.append({"subject": subject["name"], "requested": subject["count"],
                           "videos": candidates[:subject["count"]],
                           "alternates": candidates[subject["count"]:]})
@@ -587,6 +591,29 @@ def record_delivery(config, automatic=False):
                 "automatic": automatic})
 
 
+def sent_video_ids():
+    ids = set()
+    if SENT_FILE.exists():
+        ids.update(json.loads(SENT_FILE.read_text(encoding="utf-8")).get("ids", []))
+    # Include the last report made before permanent tracking was added.
+    if STATE_FILE.exists():
+        previous = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        if previous.get("sent"):
+            ids.update(video["id"] for section in previous.get("sections", [])
+                       for video in section.get("videos", []) if video.get("id"))
+    return ids
+
+
+def retire_sent_videos(result):
+    used = {video["id"] for section in result.get("sections", [])
+            for video in section.get("videos", []) if video.get("id")}
+    atomic_json(SENT_FILE, {"ids": sorted(sent_video_ids() | used)})
+    result["used_count"] = len(used)
+    result["selection"] = []
+    for section in result.get("sections", []):
+        section["videos"] = []
+
+
 def run(kind, automatic=False):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with LOCK_FILE.open("a+") as lock:
@@ -607,6 +634,7 @@ def run(kind, automatic=False):
                     raise RuntimeError("No videos had readable speech; Telegram was not sent")
                 stamp("Sending the report to Telegram")
                 send_telegram(result["message"])
+                retire_sent_videos(result)
                 result["sent"] = True
                 record_delivery(config, automatic)
         atomic_json(STATE_FILE, result)
@@ -629,6 +657,7 @@ def start_job(kind):
                     raise RuntimeError("No videos had readable speech; Telegram was not sent")
                 stamp("Sending the preview to Telegram", kind="send")
                 send_telegram(result["message"])
+                retire_sent_videos(result)
                 result["sent"] = True
                 result["kind"] = "send"
                 atomic_json(STATE_FILE, result)
@@ -663,6 +692,7 @@ def send_recent_preview():
             stamp("Sending the preview to Telegram", running=True, kind="send", error=None)
             try:
                 send_telegram(saved["message"])
+                retire_sent_videos(saved)
                 record_delivery(config)
                 saved["sent"] = True
                 saved["kind"] = "send"
@@ -806,8 +836,8 @@ def main():
     else:
         kind = args.mode
     result = run(kind, automatic=args.mode == "daily")
-    print(json.dumps({"kind": kind, "subjects": len(result["selection"]),
-                      "videos": sum(len(x["videos"]) for x in result["selection"]),
+    print(json.dumps({"kind": kind, "subjects": len(result.get("sections", result["selection"])),
+                      "videos": result.get("used_count", sum(len(x["videos"]) for x in result["selection"])),
                       "sent": result["sent"]}))
 
 
