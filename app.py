@@ -11,6 +11,7 @@ import os
 import re
 import secrets
 import subprocess
+import tempfile
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -51,6 +52,8 @@ def initial_settings():
             {"name": "Fashion", "query": "fashion news", "count": 3},
         ],
         "blocked": [],
+        "followed": [],
+        "angle": "",
     }
 
 
@@ -99,6 +102,24 @@ def validate_settings(value):
         if key not in seen:
             seen.add(key)
             blocked.append({"name": name, "channel_id": channel_id})
+    raw_followed = value.get("followed", [])
+    if not isinstance(raw_followed, list) or len(raw_followed) > 30:
+        raise ValueError("Use up to 30 creators to follow")
+    followed = []
+    seen_followed = set()
+    for item in raw_followed:
+        name = str(item.get("name", "")).strip()[:100]
+        channel_id = str(item.get("channel_id", "")).strip()[:100]
+        try:
+            count = int(item.get("count", 2))
+        except (TypeError, ValueError):
+            raise ValueError("Creator video count must be a whole number") from None
+        if not name or not 1 <= count <= 10:
+            raise ValueError("Each creator needs a name and 1 to 10 videos")
+        key = (channel_id or name).casefold()
+        if key not in seen_followed:
+            seen_followed.add(key)
+            followed.append({"name": name, "channel_id": channel_id, "count": count})
     send_time = str(value.get("time", "08:00"))
     if not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", send_time):
         raise ValueError("Choose a valid morning time")
@@ -113,6 +134,8 @@ def validate_settings(value):
         "timezone": timezone_name,
         "subjects": subjects,
         "blocked": blocked,
+        "followed": followed,
+        "angle": str(value.get("angle", "")).strip()[:400],
     }
 
 
@@ -219,10 +242,22 @@ def blocked(item, blocked_creators):
     return False
 
 
-def choose_videos(subject, blocked_creators):
+def matches_creator(item, creator):
+    if not creator:
+        return True
+    if creator.get("channel_id"):
+        return creator["channel_id"].casefold() == item.get("channel_id", "").casefold()
+    def clean(name):
+        words = re.findall(r"[a-z0-9]+", name.casefold())
+        return " ".join(words[1:] if words[:1] == ["the"] else words)
+    return clean(creator["name"]) == clean(item.get("channel", ""))
+
+
+def choose_videos(subject, blocked_creators, extra=0):
     wanted = subject["count"]
     found = flat_search(subject["query"], min(30, max(18, wanted * 5)))
-    found = [v for v in found if not blocked(v, blocked_creators)]
+    found = [v for v in found if not blocked(v, blocked_creators)
+             and matches_creator(v, subject.get("creator"))]
     # Inspect popular results and several new ones, then rank with a mild age adjustment.
     popular = sorted(found, key=lambda v: v["views"], reverse=True)[:max(10, wanted * 3)]
     first = found[:max(6, wanted * 2)]
@@ -236,7 +271,9 @@ def choose_videos(subject, blocked_creators):
             except Exception:
                 continue
             age = (datetime.now(timezone.utc).date() - datetime.fromisoformat(video["published"]).date()).days
-            if 0 <= age <= 7 and 60 <= video["duration"] <= 10800 and not blocked(video, blocked_creators):
+            if (0 <= age <= 7 and 60 <= video["duration"] <= 10800
+                    and not blocked(video, blocked_creators)
+                    and matches_creator(video, subject.get("creator"))):
                 video["score"] = round(video["views"] / ((age + 1) ** 0.55))
                 accepted.append(video)
     accepted.sort(key=lambda v: (v["score"], v["views"]), reverse=True)
@@ -250,10 +287,34 @@ def choose_videos(subject, blocked_creators):
         else:
             used_creators.add(creator)
             varied.append(video)
-    return (varied + repeats)[:wanted]
+    return (varied + repeats)[:wanted + extra]
 
 
 def transcript(video_id):
+    cache = DATA_DIR / "transcripts" / (video_id + ".txt")
+    if cache.exists() and len(cache.read_text(encoding="utf-8")) >= 500:
+        return cache.read_text(encoding="utf-8")
+    # YouTube's own caption file avoids depending on third-party speech services.
+    try:
+        with tempfile.TemporaryDirectory(prefix="leave-captions-") as directory:
+            args = ["yt-dlp", "--no-update", "--no-warnings", "--skip-download",
+                    "--write-subs", "--write-auto-subs", "--sub-lang", "en",
+                    "--sub-format", "json3", "-o", directory + "/%(id)s.%(ext)s",
+                    "https://www.youtube.com/watch?v=" + video_id]
+            result = subprocess.run(args, capture_output=True, text=True, timeout=90, check=False)
+            captions = list(Path(directory).glob("*.json3"))
+            if result.returncode == 0 and captions:
+                data = json.loads(captions[0].read_text(encoding="utf-8"))
+                spoken = "".join("".join(seg.get("utf8", "") for seg in event.get("segs", [])) + " "
+                                 for event in data.get("events", []) if not event.get("aAppend"))
+                spoken = re.sub(r"\[(?:Music|Applause|Laughter)\]", "", spoken, flags=re.I)
+                spoken = re.sub(r"\s+", " ", spoken).strip()
+                if len(spoken) >= 500:
+                    cache.parent.mkdir(parents=True, exist_ok=True)
+                    cache.write_text(spoken, encoding="utf-8")
+                    return spoken
+    except Exception:
+        pass
     url = "https://api.freetranscriptapi.com/v1/transcript?video_url=" + quote(
         "https://www.youtube.com/watch?v=" + video_id, safe="")
     try:
@@ -264,6 +325,8 @@ def transcript(video_id):
         spoken = " ".join(str(part.get("text", "")) for part in pieces if isinstance(part, dict))
         spoken = re.sub(r"\[(?:Music|Applause|Laughter)\]", "", spoken, flags=re.I)
         if len(spoken) >= 500:
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            cache.write_text(spoken, encoding="utf-8")
             return spoken
     except Exception:
         pass
@@ -276,6 +339,8 @@ def transcript(video_id):
     text = re.sub(r"\[\d+:\d+\]", "", text)
     if len(text) < 500:
         raise RuntimeError("No speech text available")
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    cache.write_text(text, encoding="utf-8")
     return text
 
 
@@ -342,16 +407,32 @@ def video_notes(video, speech):
                      "\n".join(parts), max_tokens=1200)
 
 
-def subject_digest(subject, notes):
-    system = ("Write a short morning briefing about what these videos SAY. Use 2 to 4 bullets, each with a concrete "
-              "product, event, claim, figure, or reason. Combine repeated points. State disagreements or differing opinions "
-              "when present. Do not present an unverified video claim as an established fact. No vague filler, hype, "
-              "intro, or stock conclusion. Plain English. Stay under 130 words. Do not quote at length. "
-              "Name the creator for each claim. Do not add any product, person, event, or number absent from the notes. "
-              "Use plain text, no Markdown.")
+def subject_digest(subject, notes, angle=""):
+    system = ("Write two very short lines from these video notes. Format exactly:\n"
+              "Point: [at most 22 words; name the creator and a concrete claim]\n"
+              "Why it matters: [at most 18 words; explain a direct practical consequence or decision supported by the notes]\n"
+              "The second line must answer why a person should care about the first point, not repeat it. "
+              "Use the owner's angle when supplied: prefer a supported trade-off, missing evidence, or who benefits. "
+              "Do not state a hidden motive as fact. If the notes do not support a motive, leave it out. "
+              "If the notes give no consequence, say 'The videos give no clear practical consequence.' "
+              "Attribute claims to speakers. An implication is an implication, not a proven fact. "
+              "Use plain words. No vague filler, bullets, Markdown, or facts absent from the notes.")
     source = "\n\n".join("VIDEO " + str(i + 1) + ": " + video["title"] + " — " + video["channel"] +
                            "\n" + note for i, (video, note) in enumerate(notes))
-    return ask_model(system, "SUBJECT: " + subject["name"] + "\n" + source, max_tokens=1000)
+    answer = ask_model(system, "SUBJECT: " + subject["name"] + "\nOWNER'S ANGLE: " +
+                       (angle or "None supplied") + "\n" + source, max_tokens=250)
+    point = re.search(r"(?im)^\s*Point:\s*(.+)$", answer)
+    why = re.search(r"(?im)^\s*Why it matters:\s*(.+)$", answer)
+    if not point or not why:
+        raise RuntimeError("The model did not give a point and why it matters")
+    def short_line(value, limit):
+        value = re.split(r"(?<=[.!?])\s+(?=[A-Z])", value.strip(), maxsplit=1)[0]
+        words = value.split()
+        return " ".join(words[:limit]).rstrip(",;:") + ("…" if len(words) > limit else "")
+    claim = short_line(point.group(1), 24)
+    if not claim.endswith((".", "!", "?", "…")):
+        claim += "."
+    return claim + " Why it matters: " + short_line(why.group(1), 20)
 
 
 def free_notes(video, speech):
@@ -385,25 +466,36 @@ def free_notes(video, speech):
         if any(len(tokens & old) / max(1, len(tokens | old)) > .45 for old in (item[1] for item in selected)):
             continue
         selected.append((sentence, tokens))
-        if len(selected) == 2:
+        if len(selected) == 1:
             break
     return [item[0] for item in selected]
 
 
 def free_digest(notes):
-    lines = []
-    for video, excerpts in notes:
-        for excerpt in excerpts:
-            lines.append(video["channel"] + ' said: “' + excerpt + '”')
-    return "\n".join(lines)
+    video, excerpts = notes[0]
+    excerpt = excerpts[0]
+    words = excerpt.split()
+    claim = " ".join(words[:27]) + ("…" if len(words) > 27 else "")
+    result = video["channel"] + ' said: “' + claim + '”'
+    consequence = re.search(r"\b(?:means that|which means|as a result|leads to|will|could|allows|prevents|makes it harder|makes it easier)\b[^.!?]*", excerpt, re.I)
+    if consequence:
+        words = consequence.group(0).split()
+        result += ' Why it matters: “' + " ".join(words[:18]) + ("…" if len(words) > 18 else "") + '”'
+    return result
 
 
 def build_selection(config, progress=stamp):
     selection = []
-    for subject in config["subjects"]:
+    subjects = list(config["subjects"])
+    for creator in config.get("followed", []):
+        subjects.append({"name": creator["name"], "query": creator["name"],
+                         "count": creator["count"], "creator": creator})
+    for subject in subjects:
         progress("Finding recent, highly watched videos: " + subject["name"])
-        videos = choose_videos(subject, config["blocked"])
-        selection.append({"subject": subject["name"], "requested": subject["count"], "videos": videos})
+        candidates = choose_videos(subject, config["blocked"], extra=5)
+        selection.append({"subject": subject["name"], "requested": subject["count"],
+                          "videos": candidates[:subject["count"]],
+                          "alternates": candidates[subject["count"]:]})
     return selection
 
 
@@ -411,7 +503,7 @@ def build_digest(config, selection, progress=stamp):
     model_mode = bool(LOCAL_AI and MODEL)
     sections = []
     for group in selection:
-        videos = group["videos"]
+        videos = group["videos"] + group.get("alternates", [])
         if not videos:
             sections.append({"subject": group["subject"], "text": "No recent videos with readable speech were found.",
                              "videos": [], "requested": group["requested"]})
@@ -419,6 +511,8 @@ def build_digest(config, selection, progress=stamp):
         notes = []
         failures = []
         for video in videos:
+            if len(notes) >= group["requested"]:
+                break
             progress("Reading speech: " + video["title"][:55])
             try:
                 speech = transcript(video["id"])
@@ -431,13 +525,21 @@ def build_digest(config, selection, progress=stamp):
                 video["speech_error"] = str(exc)[:160]
                 failures.append(video["speech_error"])
         if not notes:
-            if failures:
-                raise RuntimeError(group["subject"] + ": could not read or condense the selected videos (" +
-                                   failures[0] + ")")
-            content = "No videos were available to read."
+            content = "No recent videos with readable speech were found."
         else:
             progress("Combining what was said: " + group["subject"])
-            content = subject_digest({"name": group["subject"]}, notes) if model_mode else free_digest(notes)
+            if model_mode:
+                try:
+                    content = subject_digest({"name": group["subject"]}, notes, config.get("angle", ""))
+                except Exception:
+                    video, note = notes[0]
+                    first = next((line.lstrip("-• ").strip() for line in note.splitlines()
+                                  if line.strip()), "No clear point was found.")
+                    content = video["channel"] + " said: " + " ".join(first.split()[:28])
+            else:
+                content = free_digest(notes)
+        group["videos"] = [video for video, _ in notes]
+        group.pop("alternates", None)
         sections.append({"subject": group["subject"], "text": content,
                          "videos": [video for video, _ in notes], "requested": group["requested"]})
     return sections
@@ -447,12 +549,7 @@ def telegram_text(sections, timezone_name):
     day = datetime.now(ZoneInfo(timezone_name)).strftime("%d %B %Y")
     lines = ["Leave YouTube · " + day]
     for section in sections:
-        lines.append("\n" + section["subject"] + " (" + str(len(section["videos"])) +
-                     "/" + str(section["requested"]) + " videos)")
-        lines.append(section["text"])
-    site_url = os.environ.get("LEAVE_YOUTUBE_SITE_URL", "")
-    if site_url:
-        lines.append("\nChosen videos and blocked creators: " + site_url)
+        lines.append(section["subject"] + ": " + section["text"])
     return "\n".join(lines)
 
 
@@ -482,6 +579,13 @@ def send_telegram(message):
             raise RuntimeError("Telegram refused the message")
 
 
+def record_delivery(config, automatic=False):
+    atomic_json(DELIVERY_FILE, {"sent_date":
+                datetime.now(ZoneInfo(config["timezone"])).date().isoformat(),
+                "sent_at": datetime.now(timezone.utc).isoformat(),
+                "automatic": automatic})
+
+
 def run(kind, automatic=False):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with LOCK_FILE.open("a+") as lock:
@@ -492,7 +596,7 @@ def run(kind, automatic=False):
         config = settings()
         selection = build_selection(config)
         result = {"at": datetime.now(timezone.utc).isoformat(), "selection": selection,
-                  "kind": kind, "sent": False}
+                  "kind": kind, "sent": False, "settings": config}
         if kind != "selection":
             sections = build_digest(config, selection)
             result["sections"] = sections
@@ -503,22 +607,31 @@ def run(kind, automatic=False):
                 stamp("Sending the report to Telegram")
                 send_telegram(result["message"])
                 result["sent"] = True
-                atomic_json(DELIVERY_FILE, {"sent_date":
-                            datetime.now(ZoneInfo(config["timezone"])).date().isoformat(),
-                            "sent_at": datetime.now(timezone.utc).isoformat(),
-                            "automatic": automatic})
+                record_delivery(config, automatic)
         atomic_json(STATE_FILE, result)
         return result
 
 
 def start_job(kind):
     if not job_lock.acquire(blocking=False):
+        if kind == "send" and job_state.get("running") and job_state.get("kind") == "preview":
+            stamp("Will send as soon as the preview finishes", send_after_preview=True)
+            return
         raise RuntimeError("A preview or report is already running")
-    stamp("Starting", running=True, kind=kind, error=None)
+    stamp("Starting", running=True, kind=kind, error=None, send_after_preview=False)
 
     def worker():
         try:
-            run(kind)
+            result = run(kind)
+            if kind == "preview" and job_state.get("send_after_preview"):
+                if not any(section["videos"] for section in result["sections"]):
+                    raise RuntimeError("No videos had readable speech; Telegram was not sent")
+                stamp("Sending the preview to Telegram", kind="send")
+                send_telegram(result["message"])
+                result["sent"] = True
+                result["kind"] = "send"
+                atomic_json(STATE_FILE, result)
+                record_delivery(settings())
             stamp("Finished", running=False)
         except Exception as exc:
             stamp("Could not finish", running=False, error=str(exc)[:300])
@@ -526,6 +639,40 @@ def start_job(kind):
             job_lock.release()
 
     threading.Thread(target=worker, daemon=True).start()
+
+
+def send_recent_preview():
+    if not STATE_FILE.exists() or not job_lock.acquire(blocking=False):
+        return False
+    try:
+        with LOCK_FILE.open("a+") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return False
+            saved = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            if saved.get("kind") != "preview" or saved.get("sent"):
+                return False
+            if not any(section.get("videos") for section in saved.get("sections", [])):
+                return False
+            age = datetime.now(timezone.utc) - datetime.fromisoformat(saved["at"])
+            config = settings()
+            if age > timedelta(hours=2) or (saved.get("settings") and saved["settings"] != config):
+                return False
+            stamp("Sending the preview to Telegram", running=True, kind="send", error=None)
+            try:
+                send_telegram(saved["message"])
+                record_delivery(config)
+                saved["sent"] = True
+                saved["kind"] = "send"
+                atomic_json(STATE_FILE, saved)
+                stamp("Finished", running=False)
+            except Exception as exc:
+                stamp("Could not send", running=False, error=str(exc)[:300])
+                raise
+            return True
+    finally:
+        job_lock.release()
 
 
 @app.get("/")
@@ -604,6 +751,8 @@ def run_now(kind):
     if kind not in {"selection", "preview", "send"}:
         abort(404)
     try:
+        if kind == "send" and send_recent_preview():
+            return jsonify({"sent": True})
         start_job(kind)
     except RuntimeError as exc:
         return jsonify({"error": str(exc)}), 409
@@ -611,7 +760,7 @@ def run_now(kind):
 
 
 def daily_due(config, state):
-    if not config["enabled"] or not config["subjects"]:
+    if not config["enabled"] or not (config["subjects"] or config.get("followed")):
         return False
     now = datetime.now(ZoneInfo(config["timezone"]))
     if now.strftime("%H:%M") < config["time"]:
