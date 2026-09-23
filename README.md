@@ -8,6 +8,12 @@ Your part is to provide your own Telegram bot and let the assistant use that com
 
 Choose subjects, choose how many recent popular videos to read, follow creators you like, and block creators you do not. Get a short Telegram report instead of watching for hours.
 
+### The webpage you get
+
+![Leave YouTube settings page showing example subjects and morning delivery choices](assets/settings-preview.png)
+
+*A fresh copy with example choices. Your own settings page opens on your computer.*
+
 ## Download the program
 
 **[Download Leave YouTube here](https://eochu.app/leave-youtube/source.zip).** It downloads one ZIP file. Open it, then read **[START_HERE.md](START_HERE.md)** inside. The starter walks you through setting up Telegram and opening your private settings page. You do not need GitHub's Branch button.
