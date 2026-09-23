@@ -721,6 +721,11 @@ def about():
                            repo_url=os.environ.get("LEAVE_YOUTUBE_REPO_URL", ""))
 
 
+@app.get("/portrait.jpg")
+def portrait():
+    return send_file(ROOT / "assets" / "creator-portrait.jpg", mimetype="image/jpeg")
+
+
 @app.get("/source.zip")
 def source_download():
     if not SOURCE_FILE.exists():
