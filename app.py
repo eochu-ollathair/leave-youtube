@@ -774,6 +774,17 @@ def daily_due(config, state):
     return not state or state.get("sent_date") != now.date().isoformat()
 
 
+def daily_loop():
+    while True:
+        try:
+            state = json.loads(DELIVERY_FILE.read_text(encoding="utf-8")) if DELIVERY_FILE.exists() else None
+            if daily_due(settings(), state):
+                run("send", automatic=True)
+        except Exception as exc:
+            print("Morning report could not be sent: " + str(exc)[:200], flush=True)
+        time.sleep(60)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("mode", choices=["serve", "daily", "selection", "preview", "send"])
@@ -783,6 +794,8 @@ def main():
     settings()
     access_key()
     if args.mode == "serve":
+        if os.environ.get("MORNING_EMBEDDED_DAILY") == "1":
+            threading.Thread(target=daily_loop, daemon=True).start()
         app.run(host=args.host, port=args.port, threaded=True)
         return
     if args.mode == "daily":
